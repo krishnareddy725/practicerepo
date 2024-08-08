@@ -1,0 +1,187 @@
+100 - (rate(node_cpu_seconds_total{mode="idle"}[5m]) * 100) ==> cpu ideal
+
+(node_memory_MemFree_bytes / node_memory_MemTotal_bytes) * 100 ==> free 
+
+
+========================================================================================
+prometheus.service file
+
+[root@ip-172-31-94-30 system]# cat prometheus.service
+[Unit]
+Description=Prometheus service
+
+[Service]
+ExecStart=/opt/prometheus/prometheus --config.file=/opt/prometheus/prometheus.yml
+
+[Install]
+WantedBy=multi-user.target
+
+[root@ip-172-31-94-30 system]#
+==================================================================================
+
+nodeexporter service file
+
+[root@ip-172-31-94-30 system]# cat node_exporter.service
+[Unit]
+Description=Prometheus service
+
+[Service]
+ExecStart=/opt/node_exporter/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+
+[root@ip-172-31-94-30 system]#
+=============================================================================
+prometheus static configaration and mail alert
+
+[root@ip-172-31-94-30 prometheus]# cat prometheus.yml
+# my global config
+global:
+  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+           - "localhost:9093"
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+   - "alert_rules/*.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "prometheus"
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "node_exporter"
+
+    static_configs:
+      - targets: ["34.235.106.171:9100"]
+      - targets: ["34.230.156.169:9100"]
+[root@ip-172-31-94-30 prometheus]#
+
+
+========================================================================================
+
+instance down alerting
+
+[root@ip-172-31-94-30 alert_rules]# cat /opt/prometheus/alert_rules
+cat: /opt/prometheus/alert_rules: Is a directory
+[root@ip-172-31-94-30 alert_rules]# cat /opt/prometheus/alert_rules/instance-down.yml
+groups:
+  - name: Instance Down
+    rules:
+      - alert: InstanceDown
+        expr: up < 1
+        for: 1m
+        labels:
+          severity: Critical
+        annotations:
+          summary: Instance down alert
+[root@ip-172-31-94-30 alert_rules]#
+
+========================================================================================
+
+alert manger file
+[root@ip-172-31-94-30 system]# cat alertmanager.service
+[Unit]
+Description=Prometheus service
+
+[Service]
+WorkingDirectory=/opt/alertmanager
+ExecStart=/opt/alertmanager/alertmanager
+
+[Install]
+WantedBy=multi-user.target
+[root@ip-172-31-94-30 system]#
+
+=============================================================================================
+
+[root@ip-172-31-94-30 alertmanager]# cat alertmanager.yml
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 1m
+  repeat_interval: 1h
+  receiver: 'ses'
+
+receivers:
+  - name: 'ses'
+    email_configs:
+      - smarthost: 'email-smtp.us-east-1.amazonaws.com:587'
+        auth_username: 'AKIA6I3QLFPA4BXUCTCN'
+        auth_password: 'BNXm1MyspXUE0RgJgQzgeaUAHHm03TrZvodeeCd8syZY'
+        from: 'krishna.vennapusa@gmail.com'
+        to: 'krishna.live725@gmail.com'
+        headers:
+          subject: 'Prometheus Mail Alerts'
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+[root@ip-172-31-94-30 alertmanager]#
+
+====================================================================================
+
+
+dynamic scrapping
+
+
+[root@ip-172-31-94-30 prometheus]# cat prometheus.yml
+# my global config
+global:
+  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+           - "localhost:9093"
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+   - "alert_rules/*.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "prometheus"
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "node_exporter"
+
+    static_configs:
+      - targets: ["34.235.106.171:9100"]
+      - targets: ["34.230.156.169:9100"]
+
+  - job_name: "ec2_scrapping"
+    ec2_sd_configs:
+      - region: "us-east-1"
+        port: 9100
+[root@ip-172-31-94-30 prometheus]#
+
+=========================================================================================
